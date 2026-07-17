@@ -42,6 +42,8 @@ We follow the **MVP (Minimum Viable Product)** framework to prioritize features.
   * *Description:* Implement a security layer to detect and block out-of-scope queries (e.g., prompt injections, irrelevant topics).
 * **FR-05: LLM Observability & Monitoring**
   * *Description:* Integrate tracing tools (e.g., Langfuse) to log system performance, latency, and token consumption for developers.
+  * **FR-06: Excel-to-Database Storage Migration**
+  * *Description:* Fully transition the data storage backbone from standalone Excel/CSV flat files to a scalable local relational database management system (SQLite), ensuring long-term data consistency, structured indexing, and native SQL query support for the text-to-SQL engine.
 
 ---
 
@@ -58,20 +60,21 @@ sequenceDiagram
     participant Backend as Data Cleaning Engine
     participant DF as Pandas DataFrame
 
-    User->>UI: Uploads file (CSV/XLSX)
+    User->>UI: "Uploads file (CSV/XLSX)"
     activate UI
-    UI->>Backend: Passes raw file bytes
+    UI->>Backend: "Passes raw file bytes"
     activate Backend
     Backend->>Backend: "Validates columns & filters target fields"
     Backend->>Backend: "Fills NULL values"
     Backend->>DF: "Concatenates & Ingests data"
     activate DF
-    DF-->>UI: Updates session state
+    DF-->>UI: "Updates session state"
     deactivate DF
     deactivate Backend
-    UI-->>User: Displays "Upload Success" & shows table preview
+    UI-->>User: "Displays Upload Success & shows table preview"
     deactivate UI
-```
+
+  ```
 
 ### 5.2 Live Query Phase (Data Analytics Chat)
 ```mermaid
@@ -105,7 +108,6 @@ sequenceDiagram
     deactivate UI
 
 ```
----
 
 
 ## 6. Success Metrics
