@@ -42,17 +42,13 @@ We follow the **MVP (Minimum Viable Product)** framework to prioritize features.
   * *Description:* Implement a security layer to detect and block out-of-scope queries (e.g., prompt injections, irrelevant topics).
 * **FR-05: LLM Observability & Monitoring**
   * *Description:* Integrate tracing tools (e.g., Langfuse) to log system performance, latency, and token consumption for developers.
-  * **FR-06: Excel-to-Database Storage Migration**
-  * *Description:* Fully transition the data storage backbone from standalone Excel/CSV flat files to a scalable local relational database management system (SQLite), ensuring long-term data consistency, structured indexing, and native SQL query support for the text-to-SQL engine.
 
 ---
-
 ## 5. System Architecture & RAG Workflow
 The system's interactions are mapped via the Sequence Diagram below, splitting tasks cleanly into the Ingestion phase and the Live Query phase.
 
 ### 5.1 Data Ingestion Phase (File Upload)
 ```mermaid
-%%{init: {'theme': 'neutral' }}%%
 sequenceDiagram
     autonumber
     actor User as User (Merchant)
@@ -60,44 +56,40 @@ sequenceDiagram
     participant Backend as Data Cleaning Engine
     participant DF as Pandas DataFrame
 
-    User->>UI: "Uploads file (CSV/XLSX)"
+    User->>UI: Uploads file (CSV/XLSX)
     activate UI
-    UI->>Backend: "Passes raw file bytes"
+    UI->>Backend: Passes raw file bytes
     activate Backend
     Backend->>Backend: "Validates columns & filters target fields"
     Backend->>Backend: "Fills NULL values"
     Backend->>DF: "Concatenates & Ingests data"
     activate DF
-    DF-->>UI: "Updates session state"
+    DF-->>UI: Updates session state
     deactivate DF
     deactivate Backend
-    UI-->>User: "Displays Upload Success & shows table preview"
-    deactivate UI
-
-  ```
-
-### 5.2 Live Query Phase (Data Analytics Chat)
-```mermaid
+    UI-->>User: Displays "Upload Success" & shows table preview
+    deactivate UI 
+    
 sequenceDiagram
     autonumber
     actor User as User (Merchant)
     participant UI as Streamlit UI
     participant Agent as Pandas Data Agent
     participant DF as Pandas DataFrame
-    participant LLM as OpenAI Model
+    participant LLM as OpenAI (gpt-4o-mini)
 
-    User->>UI: Types question
+    User->>UI: "Types question"
     activate UI
     UI->>Agent: Invokes agent with input string & current_df
     activate Agent
     
     Note over Agent, DF: Agent analyzes query intent & schema
-    Agent->>DF: Executes generated Python code
+    Agent->>DF: "Executes generated Python code"
     activate DF
     DF-->>Agent: Returns deterministic mathematical outputs
     deactivate DF
     
-    Agent->>LLM: Sends raw results for formatting
+    Agent->>LLM: Sends raw results for human-like response formatting
     activate LLM
     LLM-->>Agent: Returns synthesized answer context
     deactivate LLM
@@ -106,9 +98,7 @@ sequenceDiagram
     deactivate Agent
     UI-->>User: Displays clean answer in Chat Interface
     deactivate UI
-
-```
-
+---
 
 ## 6. Success Metrics
 To evaluate the success and performance of this application, the product must achieve the following metrics during testing and initial deployment:
