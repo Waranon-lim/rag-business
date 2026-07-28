@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+  <title>Business AI Assistant</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <div class="app">
+    <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
+
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <button class="new-chat-btn" id="newChatBtn">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          New chat
+        </button>
+      </div>
+
+      <nav class="conversation-list" id="conversationList"></nav>
+
+      <div class="sidebar-footer">
+        <div class="brand">
+          <span class="brand-dot"></span>
+          Business AI Assistant
+        </div>
+        <button class="theme-toggle" id="themeToggle" title="Toggle theme">
+          <svg id="themeIcon" width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
+    </aside>
+
+    <main class="chat-panel">
+      <header class="chat-header">
+        <button class="icon-btn" id="menuBtn" aria-label="Toggle sidebar">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M3 6h18M3 12h18M3 18h18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </button>
+        <span class="chat-title" id="chatTitle">New chat</span>
+      </header>
+
+      <div class="messages" id="messages">
+        <div class="empty-state" id="emptyState">
+          <div class="empty-icon">✦</div>
+          <h1>Business AI Assistant</h1>
+          <p>Ask about sales, orders, products, or market trends. I can query your internal database or search the internet.</p>
+          <div class="suggestion-grid">
+            <button class="suggestion-card" data-prompt="What were the top 5 best-selling products last month?">Top 5 best-selling products last month</button>
+            <button class="suggestion-card" data-prompt="Summarize total revenue by province.">Summarize revenue by province</button>
+            <button class="suggestion-card" data-prompt="What are the current retail market trends in Thailand?">Current retail market trends</button>
+            <button class="suggestion-card" data-prompt="What can you help me with?">What can you help me with?</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="composer">
+        <div class="composer-inner">
+          <form id="chatForm" class="input-bar">
+            <textarea
+              id="messageInput"
+              placeholder="Message Business AI Assistant..."
+              rows="1"
+              autofocus
+            ></textarea>
+            <button type="submit" class="send-btn" id="sendBtn" disabled aria-label="Send message">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 19V5M5 12l7-7 7 7" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+          </form>
+          <p class="composer-hint">Enter to send &middot; Shift+Enter for a new line</p>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
