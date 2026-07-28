@@ -8,7 +8,14 @@ prompt together. Nothing in this module runs at import time — callers
 from langchain.agents import create_agent
 from langchain_openai import ChatOpenAI
 
-from config import DB_PATH, LLM_MODEL, LLM_TEMPERATURE, TABLE_NAME, TAVILY_MAX_RESULTS, XLSX_PATH
+from config import (
+    DB_PATH,
+    LLM_MODEL,
+    LLM_TEMPERATURE,
+    TABLE_NAME,
+    TAVILY_MAX_RESULTS,
+    XLSX_PATH,
+)
 from prompts import SYSTEM_PROMPT
 from tools import build_search_tool, build_sql_database, build_sql_tool
 
