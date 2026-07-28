@@ -12,9 +12,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import datetime, timezone
 from pathlib import Path
-from threading import Lock
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
@@ -22,7 +20,8 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 
 from agent import build_agent
-from config import MAX_MESSAGE_LENGTH
+from config import CONVERSATIONS_DB_PATH, MAX_HISTORY_MESSAGES, MAX_MESSAGE_LENGTH
+from conversation_store import ConversationStore, SqliteConversationStore
 
 logger = logging.getLogger(__name__)
 
@@ -33,9 +32,7 @@ app = FastAPI(title="Business RAG Assistant")
 app.mount("/static", StaticFiles(directory=FRONTEND_DIR / "static"), name="static")
 
 master_agent = build_agent()
-
-_lock = Lock()
-_conversations: dict[str, dict] = {}
+conversation_store: ConversationStore = SqliteConversationStore(CONVERSATIONS_DB_PATH)
 
 
 @app.exception_handler(Exception)
@@ -62,15 +59,6 @@ class ChatResponse(BaseModel):
     reply: str
 
 
-def _new_conversation() -> dict:
-    now = datetime.now(timezone.utc).isoformat()
-    return {"id": str(uuid.uuid4()), "title": "New chat", "created_at": now, "messages": []}
-
-
-def _summary(conv: dict) -> dict:
-    return {"id": conv["id"], "title": conv["title"], "created_at": conv["created_at"]}
-
-
 @app.get("/")
 def index() -> FileResponse:
     return FileResponse(FRONTEND_DIR / "index.html")
@@ -78,49 +66,35 @@ def index() -> FileResponse:
 
 @app.get("/api/conversations")
 def list_conversations() -> list[dict]:
-    with _lock:
-        convs = sorted(_conversations.values(), key=lambda c: c["created_at"], reverse=True)
-        return [_summary(c) for c in convs]
+    return conversation_store.list_summaries()
 
 
 @app.post("/api/conversations")
 def create_conversation() -> dict:
-    conv = _new_conversation()
-    with _lock:
-        _conversations[conv["id"]] = conv
-    return _summary(conv)
+    return conversation_store.create()
 
 
 @app.get("/api/conversations/{conversation_id}")
 def get_conversation(conversation_id: uuid.UUID) -> dict:
-    with _lock:
-        conv = _conversations.get(str(conversation_id))
-        if conv is None:
-            raise HTTPException(status_code=404, detail="Conversation not found")
-        return {"id": conv["id"], "title": conv["title"], "messages": conv["messages"]}
+    conv = conversation_store.get(str(conversation_id))
+    if conv is None:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    return conv
 
 
 @app.delete("/api/conversations/{conversation_id}")
 def delete_conversation(conversation_id: uuid.UUID) -> dict:
-    with _lock:
-        _conversations.pop(str(conversation_id), None)
+    conversation_store.delete(str(conversation_id))
     return {"ok": True}
 
 
 @app.post("/api/chat", response_model=ChatResponse)
 def chat(payload: ChatRequest) -> ChatResponse:
     conversation_id = str(payload.conversation_id) if payload.conversation_id else None
+    conv = conversation_store.get_or_create(conversation_id)
 
-    with _lock:
-        conv = _conversations.get(conversation_id) if conversation_id else None
-        if conv is None:
-            conv = _new_conversation()
-            _conversations[conv["id"]] = conv
-
-        conv["messages"].append({"role": "user", "content": payload.message})
-        if conv["title"] == "New chat":
-            conv["title"] = payload.message[:40]
-        history = list(conv["messages"])
+    conversation_store.add_message(conv["id"], "user", payload.message)
+    history = conversation_store.get_history(conv["id"], limit=MAX_HISTORY_MESSAGES)
 
     try:
         result = master_agent.invoke({"messages": history})
@@ -130,7 +104,6 @@ def chat(payload: ChatRequest) -> ChatResponse:
         logger.exception("Agent invocation failed for conversation_id=%s", conv["id"])
         reply = "Sorry, I couldn't process that request right now. Please try again."
 
-    with _lock:
-        conv["messages"].append({"role": "assistant", "content": reply})
+    conversation_store.add_message(conv["id"], "assistant", reply)
 
     return ChatResponse(conversation_id=conv["id"], reply=reply)
