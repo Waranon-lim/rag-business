@@ -6,9 +6,14 @@ by a tmp_path-scoped SQLite file — no network call, no real project files
 touched.
 """
 
+import json
 from unittest.mock import MagicMock
 
-from conftest import make_ai_message
+from conftest import make_ai_message, make_failing_astream, make_streaming_astream
+
+
+def parse_ndjson(text):
+    return [json.loads(line) for line in text.splitlines() if line.strip()]
 
 
 def test_index_serves_the_frontend(client):
@@ -194,3 +199,142 @@ def test_agent_receives_message_objects_with_content_attribute(client, fake_agen
     response = client.post("/api/chat", json={"message": "hello"})
 
     assert response.json()["reply"] == "a fresh reply"
+
+
+# ---------------- rename ----------------
+
+
+def test_rename_conversation(client):
+    conv_id = client.post("/api/conversations").json()["id"]
+
+    response = client.patch(f"/api/conversations/{conv_id}", json={"title": "My renamed chat"})
+
+    assert response.status_code == 200
+    assert response.json()["title"] == "My renamed chat"
+    assert client.get(f"/api/conversations/{conv_id}").json()["title"] == "My renamed chat"
+
+
+def test_rename_rejects_blank_title(client):
+    conv_id = client.post("/api/conversations").json()["id"]
+
+    response = client.patch(f"/api/conversations/{conv_id}", json={"title": "   "})
+
+    assert response.status_code == 422
+
+
+def test_rename_unknown_conversation_returns_404(client):
+    response = client.patch(
+        "/api/conversations/11111111-1111-1111-1111-111111111111", json={"title": "New title"}
+    )
+
+    assert response.status_code == 404
+
+
+# ---------------- streaming chat ----------------
+
+
+def test_chat_stream_assembles_deltas_into_the_full_reply(client, fake_agent):
+    fake_agent.astream = make_streaming_astream(["Hello", ", ", "world", "!"])
+
+    response = client.post("/api/chat/stream", json={"message": "hi"})
+
+    events = parse_ndjson(response.text)
+    assert events[0]["type"] == "start"
+    assert isinstance(events[0]["message_id"], int)
+    assert [e["content"] for e in events if e["type"] == "delta"] == ["Hello", ", ", "world", "!"]
+    assert events[-1]["type"] == "done"
+
+
+def test_chat_stream_ignores_non_model_node_chunks(client, fake_agent):
+    """Regression test for the exact bug this design guards against: chunks
+    from the SQL tool's own internal reasoning (or any non-'model' node)
+    must never reach the client as if they were the final reply."""
+
+    async def mixed_astream(payload, stream_mode="messages"):
+        yield make_ai_message("noisy tool internals"), {"langgraph_node": "tools"}
+        yield make_ai_message("real "), {"langgraph_node": "model"}
+        yield make_ai_message("answer"), {"langgraph_node": "model"}
+
+    fake_agent.astream = mixed_astream
+
+    response = client.post("/api/chat/stream", json={"message": "hi"})
+
+    events = parse_ndjson(response.text)
+    deltas = [e["content"] for e in events if e["type"] == "delta"]
+    assert deltas == ["real ", "answer"]
+    assert "noisy tool internals" not in response.text
+
+
+def test_chat_stream_persists_the_assembled_reply(client, server_module, fake_agent):
+    fake_agent.astream = make_streaming_astream(["full ", "reply"])
+
+    response = client.post("/api/chat/stream", json={"message": "hi"})
+    conv_id = parse_ndjson(response.text)[0]["conversation_id"]
+
+    full = client.get(f"/api/conversations/{conv_id}").json()
+    assert full["messages"][0]["content"] == "hi"
+    assert full["messages"][1]["content"] == "full reply"
+
+
+def test_chat_stream_with_no_content_yet_uses_generic_message_on_failure(client, fake_agent):
+    fake_agent.astream = make_failing_astream(RuntimeError("leaked secret: /etc/config"))
+
+    response = client.post("/api/chat/stream", json={"message": "hi"})
+
+    events = parse_ndjson(response.text)
+    error_event = next(e for e in events if e["type"] == "error")
+    assert "leaked secret" not in error_event["content"]
+    assert error_event["content"] == "Sorry, I couldn't process that request right now. Please try again."
+    assert "leaked secret" not in response.text
+
+
+def test_chat_stream_keeps_partial_content_generated_before_a_failure(client, server_module, fake_agent):
+    fake_agent.astream = make_failing_astream(
+        RuntimeError("boom"), pieces_before_failure=["partial ", "text"]
+    )
+
+    response = client.post("/api/chat/stream", json={"message": "hi"})
+    conv_id = parse_ndjson(response.text)[0]["conversation_id"]
+
+    full = client.get(f"/api/conversations/{conv_id}").json()
+    assert full["messages"][1]["content"] == "partial text"
+
+
+def test_chat_stream_with_no_visible_content_persists_no_assistant_message(
+    client, server_module, fake_agent
+):
+    """A successful stream that never yields model-node content (e.g. the
+    agent only made tool calls and produced no visible text) must not
+    persist an empty assistant message row."""
+
+    async def empty_astream(payload, stream_mode="messages"):
+        yield make_ai_message(""), {"langgraph_node": "model"}
+
+    fake_agent.astream = empty_astream
+
+    response = client.post("/api/chat/stream", json={"message": "hi"})
+    conv_id = parse_ndjson(response.text)[0]["conversation_id"]
+
+    full = client.get(f"/api/conversations/{conv_id}").json()
+    assert [m["role"] for m in full["messages"]] == ["user"]
+    assert parse_ndjson(response.text)[-1]["type"] == "done"
+
+
+def test_chat_stream_edit_message_id_truncates_before_regenerating(client, server_module, fake_agent):
+    fake_agent.astream = make_streaming_astream(["first reply"])
+    first = parse_ndjson(client.post("/api/chat/stream", json={"message": "first question"}).text)
+    conv_id = first[0]["conversation_id"]
+    user_message_id = server_module.conversation_store.get(conv_id)["messages"][0]["id"]
+
+    fake_agent.astream = make_streaming_astream(["second reply"])
+    client.post(
+        "/api/chat/stream",
+        json={
+            "conversation_id": conv_id,
+            "message": "edited question",
+            "edit_message_id": user_message_id,
+        },
+    )
+
+    full = client.get(f"/api/conversations/{conv_id}").json()
+    assert [m["content"] for m in full["messages"]] == ["edited question", "second reply"]

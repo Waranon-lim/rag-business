@@ -39,18 +39,23 @@
         <span class="chat-title" id="chatTitle">New chat</span>
       </header>
 
-      <div class="messages" id="messages">
-        <div class="empty-state" id="emptyState">
-          <div class="empty-icon">✦</div>
-          <h1>Business AI Assistant</h1>
-          <p>Ask about sales, orders, products, or market trends. I can query your internal database or search the internet.</p>
-          <div class="suggestion-grid">
-            <button class="suggestion-card" data-prompt="What were the top 5 best-selling products last month?">Top 5 best-selling products last month</button>
-            <button class="suggestion-card" data-prompt="Summarize total revenue by province.">Summarize revenue by province</button>
-            <button class="suggestion-card" data-prompt="What are the current retail market trends in Thailand?">Current retail market trends</button>
-            <button class="suggestion-card" data-prompt="What can you help me with?">What can you help me with?</button>
+      <div class="messages-wrap">
+        <div class="messages" id="messages">
+          <div class="empty-state" id="emptyState">
+            <div class="empty-icon">✦</div>
+            <h1>Business AI Assistant</h1>
+            <p>Ask about sales, orders, products, or market trends. I can query your internal database or search the internet.</p>
+            <div class="suggestion-grid">
+              <button class="suggestion-card" data-prompt="What were the top 5 best-selling products last month?">Top 5 best-selling products last month</button>
+              <button class="suggestion-card" data-prompt="Summarize total revenue by province.">Summarize revenue by province</button>
+              <button class="suggestion-card" data-prompt="What are the current retail market trends in Thailand?">Current retail market trends</button>
+              <button class="suggestion-card" data-prompt="What can you help me with?">What can you help me with?</button>
+            </div>
           </div>
         </div>
+        <button class="scroll-bottom-btn" id="scrollBottomBtn" aria-label="Scroll to latest message" hidden>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12l7 7 7-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
       </div>
 
       <div class="composer">

@@ -165,6 +165,82 @@ def test_delete_unknown_id_is_a_safe_noop(store):
     store.delete("11111111-1111-1111-1111-111111111111")  # must not raise
 
 
+def test_get_includes_message_ids(store):
+    conv = store.create()
+    store.add_message(conv["id"], "user", "hello")
+
+    messages = store.get(conv["id"])["messages"]
+
+    assert isinstance(messages[0]["id"], int)
+
+
+def test_add_message_returns_the_new_message_id(store):
+    conv = store.create()
+
+    message_id = store.add_message(conv["id"], "user", "hello")
+
+    stored = store.get(conv["id"])["messages"][0]
+    assert stored["id"] == message_id
+
+
+def test_delete_messages_from_removes_target_and_everything_after(store):
+    conv = store.create()
+    ids = [store.add_message(conv["id"], "user" if i % 2 == 0 else "assistant", f"msg-{i}") for i in range(5)]
+
+    store.delete_messages_from(conv["id"], ids[2])
+
+    remaining = store.get(conv["id"])["messages"]
+    assert [m["content"] for m in remaining] == ["msg-0", "msg-1"]
+
+
+def test_delete_messages_from_is_scoped_to_its_own_conversation(store):
+    conv_a = store.create()
+    conv_b = store.create()
+    a_message_id = store.add_message(conv_a["id"], "user", "a-message")
+    store.add_message(conv_b["id"], "user", "b-message")
+
+    # Deleting from conv_b using conv_a's (lower) message id: without the
+    # conversation_id scoping clause, "id >= a_message_id" would also match
+    # (and delete) conv_a's own message, since ids increase globally across
+    # every conversation's messages.
+    store.delete_messages_from(conv_b["id"], a_message_id)
+
+    assert [m["content"] for m in store.get(conv_a["id"])["messages"]] == ["a-message"]
+    assert store.get(conv_b["id"])["messages"] == []
+
+
+def test_rename_updates_the_title(store):
+    conv = store.create()
+
+    store.rename(conv["id"], "My custom title")
+
+    assert store.get(conv["id"])["title"] == "My custom title"
+
+
+def test_rename_overrides_even_an_already_auto_titled_conversation(store):
+    conv = store.create()
+    store.add_message(conv["id"], "user", "first question sets the auto title")
+
+    store.rename(conv["id"], "Renamed by user")
+
+    assert store.get(conv["id"])["title"] == "Renamed by user"
+
+
+def test_rename_returns_the_updated_summary(store):
+    conv = store.create()
+
+    updated = store.rename(conv["id"], "New title")
+
+    assert updated["id"] == conv["id"]
+    assert updated["title"] == "New title"
+
+
+def test_rename_unknown_conversation_returns_none(store):
+    result = store.rename("11111111-1111-1111-1111-111111111111", "New title")
+
+    assert result is None
+
+
 def test_write_failure_rolls_back_instead_of_partially_committing(store):
     """add_message on a conversation_id that doesn't exist violates the
     messages.conversation_id foreign key — the transaction must roll back

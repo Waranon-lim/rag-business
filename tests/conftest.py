@@ -22,11 +22,43 @@ def make_ai_message(content: str) -> SimpleNamespace:
     return SimpleNamespace(content=content)
 
 
+def make_streaming_astream(pieces, node="model"):
+    """Build an .astream() replacement yielding (chunk, meta) tuples for each
+    piece of text, tagged with the given langgraph_node. A plain MagicMock
+    isn't async-iterable, so tests that need to control streaming behavior
+    reassign `fake_agent.astream` to a function built by this helper."""
+
+    async def _astream(payload, stream_mode="messages"):
+        for piece in pieces:
+            yield make_ai_message(piece), {"langgraph_node": node}
+
+    return _astream
+
+
+def make_failing_astream(exc, pieces_before_failure=()):
+    """An .astream() replacement that yields any given pieces, then raises."""
+
+    async def _astream(payload, stream_mode="messages"):
+        for piece in pieces_before_failure:
+            yield make_ai_message(piece), {"langgraph_node": "model"}
+        raise exc
+
+    return _astream
+
+
 @pytest.fixture
 def fake_agent():
-    """A stand-in for master_agent: no LLM, no network, fully scripted."""
+    """A stand-in for master_agent: no LLM, no network, fully scripted.
+
+    .invoke is a MagicMock (existing tests configure it via
+    .return_value/.side_effect/.assert_not_called()). .astream is a plain
+    async generator function, not a MagicMock, since MagicMock instances
+    aren't async-iterable — reassign it directly (see make_streaming_astream
+    above) in tests that need specific streaming behavior.
+    """
     agent = MagicMock(name="fake_master_agent")
     agent.invoke.return_value = {"messages": [make_ai_message("fake reply")]}
+    agent.astream = make_streaming_astream(["fake ", "reply"])
     return agent
 
 

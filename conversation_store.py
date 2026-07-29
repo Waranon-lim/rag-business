@@ -35,8 +35,9 @@ class ConversationStore(ABC):
         """Return the full conversation (id, title, messages) or None if missing."""
 
     @abstractmethod
-    def add_message(self, conversation_id: str, role: str, content: str) -> None:
-        """Append a message. Auto-titles the conversation from the first user message."""
+    def add_message(self, conversation_id: str, role: str, content: str) -> int:
+        """Append a message and return its id. Auto-titles the conversation
+        from the first user message."""
 
     @abstractmethod
     def get_history(self, conversation_id: str, limit: int | None = None) -> list[dict]:
@@ -46,6 +47,19 @@ class ConversationStore(ABC):
     @abstractmethod
     def delete(self, conversation_id: str) -> None:
         """Delete a conversation and its messages. No-op if it doesn't exist."""
+
+    @abstractmethod
+    def delete_messages_from(self, conversation_id: str, message_id: int) -> None:
+        """Delete the message with id=message_id and every message after it
+        in that conversation. Used to discard the old continuation when a
+        past message is edited and regenerated. No-op if message_id doesn't
+        belong to that conversation."""
+
+    @abstractmethod
+    def rename(self, conversation_id: str, title: str) -> dict | None:
+        """Set the conversation's title explicitly (unlike auto-titling, this
+        always overwrites). Returns the updated summary, or None if the
+        conversation doesn't exist."""
 
 
 class SqliteConversationStore(ConversationStore):
@@ -146,7 +160,7 @@ class SqliteConversationStore(ConversationStore):
             if conv_row is None:
                 return None
             message_rows = conn.execute(
-                "SELECT role, content FROM messages WHERE conversation_id = ? ORDER BY id ASC",
+                "SELECT id, role, content FROM messages WHERE conversation_id = ? ORDER BY id ASC",
                 (conversation_id,),
             ).fetchall()
         return {
@@ -155,18 +169,20 @@ class SqliteConversationStore(ConversationStore):
             "messages": [dict(row) for row in message_rows],
         }
 
-    def add_message(self, conversation_id: str, role: str, content: str) -> None:
+    def add_message(self, conversation_id: str, role: str, content: str) -> int:
         created_at = datetime.now(timezone.utc).isoformat()
         with self._connection() as conn:
-            conn.execute(
+            cursor = conn.execute(
                 "INSERT INTO messages (conversation_id, role, content, created_at) VALUES (?, ?, ?, ?)",
                 (conversation_id, role, content, created_at),
             )
+            message_id = cursor.lastrowid
             if role == "user":
                 conn.execute(
                     "UPDATE conversations SET title = ? WHERE id = ? AND title = ?",
                     (content[:40], conversation_id, _NEW_CHAT_TITLE),
                 )
+        return message_id
 
     def get_history(self, conversation_id: str, limit: int | None = None) -> list[dict]:
         with self._connection() as conn:
@@ -193,3 +209,22 @@ class SqliteConversationStore(ConversationStore):
     def delete(self, conversation_id: str) -> None:
         with self._connection() as conn:
             conn.execute("DELETE FROM conversations WHERE id = ?", (conversation_id,))
+
+    def delete_messages_from(self, conversation_id: str, message_id: int) -> None:
+        with self._connection() as conn:
+            conn.execute(
+                "DELETE FROM messages WHERE conversation_id = ? AND id >= ?",
+                (conversation_id, message_id),
+            )
+
+    def rename(self, conversation_id: str, title: str) -> dict | None:
+        with self._connection() as conn:
+            conn.execute(
+                "UPDATE conversations SET title = ? WHERE id = ?",
+                (title, conversation_id),
+            )
+            row = conn.execute(
+                "SELECT id, title, created_at FROM conversations WHERE id = ?",
+                (conversation_id,),
+            ).fetchone()
+        return dict(row) if row is not None else None
