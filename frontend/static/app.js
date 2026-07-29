@@ -43,12 +43,22 @@
       .replace(/'/g, "&#39;");
   }
 
+  // Code block placeholders use \x01 (a control character) as a delimiter
+  // instead of plain spaces. A code block that forms its own paragraph
+  // (blank line before/after -- the normal case) gets run through
+  // block.trim() by the paragraph-splitting step below; a space-delimited
+  // placeholder would have its delimiters silently eaten by that trim(),
+  // permanently breaking the restore regex further down. \x01 survives
+  // .trim() and escapeHtml() untouched.
+  const CB_OPEN = "\x01CB";
+  const CB_CLOSE = "\x01";
+
   function renderMarkdown(raw) {
     const codeBlocks = [];
     let text = raw.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) => {
       const idx = codeBlocks.length;
       codeBlocks.push({ lang, code: code.replace(/\n$/, "") });
-      return ` CB${idx} `;
+      return `${CB_OPEN}${idx}${CB_CLOSE}`;
     });
 
     text = escapeHtml(text);
@@ -127,12 +137,13 @@
         const trimmed = block.trim();
         if (!trimmed) return "";
         if (/^<(h1|h2|h3|ul|ol|table)/.test(trimmed)) return trimmed;
+        if (/^\x01CB\d+\x01$/.test(trimmed)) return trimmed;
         return `<p>${trimmed.replace(/\n/g, "<br>")}</p>`;
       })
       .join("\n");
 
     text = text.replace(/IC(\d+)/g, (_, i) => `<code>${inlineCodes[+i]}</code>`);
-    text = text.replace(/ CB(\d+) /g, (_, i) => {
+    text = text.replace(/\x01CB(\d+)\x01/g, (_, i) => {
       const block = codeBlocks[+i];
       const langClass = block.lang ? ` class="language-${escapeHtml(block.lang)}"` : "";
       return `<pre><code${langClass}>${escapeHtml(block.code)}</code></pre>`;
