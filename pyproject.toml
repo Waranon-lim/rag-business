@@ -1,0 +1,23 @@
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Without this, top-level modules (agent.py, tools.py, conversation_store.py,
+# etc.) are only importable when invoked as `python -m pytest`, which adds the
+# CWD to sys.path -- bare `pytest` (what CI, most editors, and most people
+# actually run) does not, and fails with ModuleNotFoundError. This makes the
+# suite import correctly regardless of how it's invoked.
+pythonpath = ["."]
+addopts = "--cov=. --cov-report=term-missing --cov-fail-under=80"
+
+[tool.coverage.run]
+branch = true
+omit = [
+    "tests/*",
+    ".venv/*",
+    "main_agent.py",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.:",
+]
